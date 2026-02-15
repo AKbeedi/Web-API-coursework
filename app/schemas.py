@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date as DateType
 from pydantic import BaseModel, Field
 
 
@@ -24,33 +24,29 @@ class CityOut(BaseModel):
     lat: float
     lon: float
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ---------- Observation (read/query) ----------
-from datetime import date
-from pydantic import BaseModel
-
 class ObservationOut(BaseModel):
     id: int
     city_id: int
-    date: date
+    # DB column is obs_date, but API returns it as "date"
+    date: DateType = Field(alias="obs_date")
     temp_c: float | None
     pm25: float | None
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-        fields = {"date": "obs_date"}
-
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,  # allows using field names in output cleanly
+    }
 
 
 # ---------- Analytics ----------
 class CitySummaryOut(BaseModel):
     city_id: int
-    start: date
-    end: date
+    start: DateType
+    end: DateType
     count_days: int
 
     avg_temp_c: float | None
@@ -63,7 +59,7 @@ class CitySummaryOut(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    date: date
+    date: DateType
     value: float | None
     moving_avg: float | None
 
@@ -71,7 +67,7 @@ class TrendPoint(BaseModel):
 class TrendOut(BaseModel):
     city_id: int
     metric: str
-    start: date
-    end: date
+    start: DateType
+    end: DateType
     window: int
     points: list[TrendPoint]

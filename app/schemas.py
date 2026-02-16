@@ -71,3 +71,20 @@ class TrendOut(BaseModel):
     end: DateType
     window: int
     points: list[TrendPoint]
+    
+class AnomalyPoint(BaseModel):
+    date: DateType
+    value: float
+    z_score: float
+
+
+class AnomalyOut(BaseModel):
+    city_id: int
+    metric: str
+    start: DateType
+    end: DateType
+    threshold: float
+    mean: float
+    std: float
+    anomalies: list[AnomalyPoint]
+

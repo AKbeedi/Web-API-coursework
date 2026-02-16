@@ -1,4 +1,6 @@
 from __future__ import annotations
+from math import sqrt 
+
 
 from datetime import date
 from fastapi import FastAPI, Depends, HTTPException, Query, status
@@ -221,3 +223,74 @@ def city_trend(
         window=window,
         points=points,
     )
+@app.get("/cities/{city_id}/anomalies", response_model=schemas.AnomalyOut)
+def city_anomalies(
+    city_id: int,
+    metric: str = Query("temp_c", pattern="^(temp_c|pm25)$"),
+    start: date = Query(...),
+    end: date = Query(...),
+    threshold: float = Query(2.0, ge=0.5, le=10.0),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns anomaly days using z-score: (value - mean) / std.
+    threshold=2.0 is a common default.
+    """
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    get_city_or_404(db, city_id)
+
+    field = models.Observation.temp_c if metric == "temp_c" else models.Observation.pm25
+
+    rows = (
+        db.query(models.Observation.obs_date, field)
+        .filter(models.Observation.city_id == city_id)
+        .filter(models.Observation.obs_date >= start)
+        .filter(models.Observation.obs_date <= end)
+        .filter(field.isnot(None))
+        .order_by(models.Observation.obs_date.asc())
+        .all()
+    )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No observations for that city and date range.")
+
+    values = [float(v) for _, v in rows]
+    n = len(values)
+
+    mean = sum(values) / n
+    var = sum((v - mean) ** 2 for v in values) / n
+    std = sqrt(var)
+
+    # If std==0, everything is identical -> no anomalies
+    if std == 0:
+        return schemas.AnomalyOut(
+            city_id=city_id,
+            metric=metric,
+            start=start,
+            end=end,
+            threshold=threshold,
+            mean=float(mean),
+            std=0.0,
+            anomalies=[],
+        )
+
+    anomalies: list[schemas.AnomalyPoint] = []
+    for d, v in rows:
+        v = float(v)
+        z = (v - mean) / std
+        if abs(z) >= threshold:
+            anomalies.append(schemas.AnomalyPoint(date=d, value=v, z_score=float(z)))
+
+    return schemas.AnomalyOut(
+        city_id=city_id,
+        metric=metric,
+        start=start,
+        end=end,
+        threshold=float(threshold),
+        mean=float(mean),
+        std=float(std),
+        anomalies=anomalies,
+    )
+

@@ -9,6 +9,8 @@ A FastAPI-based backend system for storing and analysing historical urban climat
 - Summary statistics endpoint
 - Trend analysis with moving averages
 - CSV dataset ingestion script
+- Statistical anomaly detection using z-score method
+
 
 ---
 

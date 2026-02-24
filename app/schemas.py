@@ -87,4 +87,11 @@ class AnomalyOut(BaseModel):
     mean: float
     std: float
     anomalies: list[AnomalyPoint]
+    
+class ProblemDetails(BaseModel):
+    type: str
+    title: str
+    status: int
+    detail: str
+    instance: str | None = None
 

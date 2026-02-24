@@ -1,5 +1,8 @@
 from __future__ import annotations
-from math import sqrt 
+from math import sqrt
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 
 from datetime import date
@@ -28,7 +31,12 @@ def on_startup():
 def get_city_or_404(db: Session, city_id: int) -> models.City:
     city = db.get(models.City, city_id)
     if not city:
-        raise HTTPException(status_code=404, detail="City not found.")
+        raise ProblemException(
+            status=404,
+            title="City not found",
+            detail=f"City with id={city_id} does not exist.",
+            type_="https://example.com/problems/city-not-found",
+        )
     return city
 
 
@@ -293,4 +301,22 @@ def city_anomalies(
         std=float(std),
         anomalies=anomalies,
     )
-
+class ProblemException(Exception):
+    def __init__(self, *, status: int, title: str, detail: str, type_: str = "about:blank"):
+        self.status = status
+        self.title = title
+        self.detail = detail
+        self.type_ = type_
+        
+@app.exception_handler(ProblemException)
+def problem_exception_handler(request: Request, exc: ProblemException):
+    return JSONResponse(
+        status_code=exc.status,
+        content={
+            "type": exc.type_,
+            "title": exc.title,
+            "status": exc.status,
+            "detail": exc.detail,
+            "instance": str(request.url.path),
+        },
+    )

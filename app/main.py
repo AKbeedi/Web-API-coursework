@@ -110,19 +110,29 @@ def query_observations(
     city_id: int = Query(..., ge=1),
     start: date | None = None,
     end: date | None = None,
-    limit: int = Query(2000, ge=1, le=20000),
+    limit: int = Query(200, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("obs_date", pattern="^(obs_date|temp_c|pm25)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
     get_city_or_404(db, city_id)
 
     q = db.query(models.Observation).filter(models.Observation.city_id == city_id)
+
     if start is not None:
         q = q.filter(models.Observation.obs_date >= start)
     if end is not None:
         q = q.filter(models.Observation.obs_date <= end)
 
-    return q.order_by(models.Observation.obs_date.asc()).limit(limit).all()
+    sort_col = {
+        "obs_date": models.Observation.obs_date,
+        "temp_c": models.Observation.temp_c,
+        "pm25": models.Observation.pm25,
+    }[sort]
 
+    q = q.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
+    return q.offset(offset).limit(limit).all()
 
 # -------------------- Analytics --------------------
 @app.get("/cities/{city_id}/summary", response_model=schemas.CitySummaryOut)

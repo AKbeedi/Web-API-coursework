@@ -72,21 +72,7 @@ class TrendOut(BaseModel):
     window: int
     points: list[TrendPoint]
     
-class AnomalyPoint(BaseModel):
-    date: DateType
-    value: float
-    z_score: float
 
-
-class AnomalyOut(BaseModel):
-    city_id: int
-    metric: str
-    start: DateType
-    end: DateType
-    threshold: float
-    mean: float
-    std: float
-    anomalies: list[AnomalyPoint]
     
 class ProblemDetails(BaseModel):
     type: str
@@ -95,3 +81,58 @@ class ProblemDetails(BaseModel):
     detail: str
     instance: str | None = None
 
+from typing import Literal
+
+AnomalyMethod = Literal["zscore", "rolling_zscore", "iqr"]
+
+class AnomalyPoint(BaseModel):
+    date: DateType
+    value: float
+    score: float  # z-score for zscore methods, deviation score for iqr (see below)
+    direction: Literal["high", "low"]
+
+class AnomalyOut(BaseModel):
+    city_id: int
+    metric: str
+    start: DateType
+    end: DateType
+
+    method: AnomalyMethod
+    window: int | None = None   # only for rolling_zscore
+    threshold: float | None = None  # used by zscore + rolling_zscore
+    k: float | None = None      # used by iqr (1.5 default)
+
+    # method-specific stats (optional)
+    mean: float | None = None
+    std: float | None = None
+    q1: float | None = None
+    q3: float | None = None
+    iqr: float | None = None
+
+    anomalies: list[AnomalyPoint]
+
+
+# ---- Risk score ----
+class RiskScoreOut(BaseModel):
+    city_id: int
+    start: DateType
+    end: DateType
+    risk_score: float  # 0-100
+    label: Literal["Low", "Moderate", "High"]
+    components: dict[str, float]  # transparency: variance, anomaly_rate, trend_slope etc.
+
+
+# ---- Regimes ----
+class RegimePoint(BaseModel):
+    date: DateType
+    value: float | None
+    rolling_std: float | None
+    regime: Literal["Stable", "Volatile", "Extreme"]
+
+class RegimesOut(BaseModel):
+    city_id: int
+    metric: str
+    start: DateType
+    end: DateType
+    window: int
+    points: list[RegimePoint]

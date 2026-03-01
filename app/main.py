@@ -14,6 +14,39 @@ from sqlalchemy import func
 from .database import Base, engine, get_db
 from . import models, schemas  # <-- relative import (forces local models)
 
+from math import sqrt
+from statistics import quantiles
+from typing import Literal  
+
+def _mean_std(values: list[float]) -> tuple[float, float]:
+    n = len(values)
+    mean = sum(values) / n
+    var = sum((v - mean) ** 2 for v in values) / n
+    std = sqrt(var)
+    return mean, std
+
+
+def _rolling_mean_std(values: list[float], window: int, idx: int) -> tuple[float | None, float | None]:
+    # baseline excludes current point; uses previous window values
+    start_i = max(0, idx - window)
+    base = values[start_i:idx]
+    base = [v for v in base if v is not None]
+    if len(base) < 2:
+        return None, None
+    mean, std = _mean_std([float(v) for v in base])
+    if std == 0:
+        return mean, 0.0
+    return mean, std
+
+
+def _rolling_std(values: list[float | None], window: int, idx: int) -> float | None:
+    start_i = max(0, idx - window + 1)
+    w = [v for v in values[start_i:idx + 1] if v is not None]
+    if len(w) < 2:
+        return None
+    _, std = _mean_std([float(v) for v in w])
+    return std
+
 app = FastAPI(
     title="COMP3011 Climate & Urban Environment Statistics API",
     version="1.0.0",
@@ -247,13 +280,12 @@ def city_anomalies(
     metric: str = Query("temp_c", pattern="^(temp_c|pm25)$"),
     start: date = Query(...),
     end: date = Query(...),
-    threshold: float = Query(2.0, ge=0.5, le=10.0),
+    method: str = Query("zscore", pattern="^(zscore|rolling_zscore|iqr)$"),
+    threshold: float = Query(2.0, ge=0.5, le=10.0),   # for zscore methods
+    window: int = Query(14, ge=3, le=120),            # for rolling_zscore
+    k: float = Query(1.5, ge=0.5, le=10.0),           # for iqr
     db: Session = Depends(get_db),
 ):
-    """
-    Returns anomaly days using z-score: (value - mean) / std.
-    threshold=2.0 is a common default.
-    """
     if end < start:
         raise HTTPException(status_code=422, detail="end must be >= start")
 
@@ -274,42 +306,92 @@ def city_anomalies(
     if not rows:
         raise HTTPException(status_code=404, detail="No observations for that city and date range.")
 
+    dates = [d for d, _ in rows]
     values = [float(v) for _, v in rows]
-    n = len(values)
-
-    mean = sum(values) / n
-    var = sum((v - mean) ** 2 for v in values) / n
-    std = sqrt(var)
-
-    # If std==0, everything is identical -> no anomalies
-    if std == 0:
-        return schemas.AnomalyOut(
-            city_id=city_id,
-            metric=metric,
-            start=start,
-            end=end,
-            threshold=threshold,
-            mean=float(mean),
-            std=0.0,
-            anomalies=[],
-        )
 
     anomalies: list[schemas.AnomalyPoint] = []
-    for d, v in rows:
-        v = float(v)
-        z = (v - mean) / std
-        if abs(z) >= threshold:
-            anomalies.append(schemas.AnomalyPoint(date=d, value=v, z_score=float(z)))
+
+    if method == "zscore":
+        mean, std = _mean_std(values)
+        if std == 0:
+            return schemas.AnomalyOut(
+                city_id=city_id, metric=metric, start=start, end=end,
+                method="zscore", threshold=threshold, mean=float(mean), std=0.0,
+                anomalies=[]
+            )
+
+        for d, v in zip(dates, values):
+            z = (v - mean) / std
+            if abs(z) >= threshold:
+                anomalies.append(
+                    schemas.AnomalyPoint(
+                        date=d,
+                        value=v,
+                        score=float(z),
+                        direction="high" if z > 0 else "low",
+                    )
+                )
+
+        return schemas.AnomalyOut(
+            city_id=city_id, metric=metric, start=start, end=end,
+            method="zscore", threshold=float(threshold),
+            mean=float(mean), std=float(std),
+            anomalies=anomalies
+        )
+
+    if method == "rolling_zscore":
+        # score each point relative to previous window baseline
+        for i, (d, v) in enumerate(zip(dates, values)):
+            mean_i, std_i = _rolling_mean_std(values, window, i)
+            if mean_i is None or std_i is None or std_i == 0:
+                continue
+            z = (v - mean_i) / std_i
+            if abs(z) >= threshold:
+                anomalies.append(
+                    schemas.AnomalyPoint(
+                        date=d,
+                        value=v,
+                        score=float(z),
+                        direction="high" if z > 0 else "low",
+                    )
+                )
+
+        # For transparency, return global mean/std too (optional)
+        mean_g, std_g = _mean_std(values)
+        return schemas.AnomalyOut(
+            city_id=city_id, metric=metric, start=start, end=end,
+            method="rolling_zscore", window=window, threshold=float(threshold),
+            mean=float(mean_g), std=float(std_g),
+            anomalies=anomalies
+        )
+
+    # method == "iqr"
+    # quartiles
+    qs = quantiles(values, n=4, method="inclusive")
+    q1, q3 = float(qs[0]), float(qs[2])
+    iqr = q3 - q1
+    low_cut = q1 - k * iqr
+    high_cut = q3 + k * iqr
+
+    for d, v in zip(dates, values):
+        if v < low_cut or v > high_cut:
+            # score: how far beyond the cutoff (in IQR units)
+            if v < low_cut:
+                score = (low_cut - v) / iqr if iqr != 0 else 0.0
+                direction = "low"
+            else:
+                score = (v - high_cut) / iqr if iqr != 0 else 0.0
+                direction = "high"
+
+            anomalies.append(
+                schemas.AnomalyPoint(date=d, value=v, score=float(score), direction=direction)
+            )
 
     return schemas.AnomalyOut(
-        city_id=city_id,
-        metric=metric,
-        start=start,
-        end=end,
-        threshold=float(threshold),
-        mean=float(mean),
-        std=float(std),
-        anomalies=anomalies,
+        city_id=city_id, metric=metric, start=start, end=end,
+        method="iqr", k=float(k),
+        q1=q1, q3=q3, iqr=float(iqr),
+        anomalies=anomalies
     )
 class ProblemException(Exception):
     def __init__(self, *, status: int, title: str, detail: str, type_: str = "about:blank"):
@@ -329,4 +411,155 @@ def problem_exception_handler(request: Request, exc: ProblemException):
             "detail": exc.detail,
             "instance": str(request.url.path),
         },
+    )
+@app.get("/cities/{city_id}/risk-score", response_model=schemas.RiskScoreOut)
+def city_risk_score(
+    city_id: int,
+    start: date = Query(...),
+    end: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    get_city_or_404(db, city_id)
+
+    # Pull data for both metrics
+    rows = (
+        db.query(models.Observation.obs_date, models.Observation.temp_c, models.Observation.pm25)
+        .filter(models.Observation.city_id == city_id)
+        .filter(models.Observation.obs_date >= start)
+        .filter(models.Observation.obs_date <= end)
+        .order_by(models.Observation.obs_date.asc())
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No observations for that city and date range.")
+
+    temps = [float(t) for _, t, _ in rows if t is not None]
+    pm25s = [float(p) for _, _, p in rows if p is not None]
+
+    # variance proxies (std)
+    temp_std = _mean_std(temps)[1] if len(temps) >= 2 else 0.0
+    pm25_std = _mean_std(pm25s)[1] if len(pm25s) >= 2 else 0.0
+
+    # anomaly rate (use your anomalies method quickly in-code: zscore, threshold 2)
+    def anomaly_rate(values: list[float], threshold: float = 2.0) -> float:
+        if len(values) < 3:
+            return 0.0
+        mean, std = _mean_std(values)
+        if std == 0:
+            return 0.0
+        count = sum(1 for v in values if abs((v - mean) / std) >= threshold)
+        return count / len(values)
+
+    temp_anom = anomaly_rate(temps, 2.0)
+    pm25_anom = anomaly_rate(pm25s, 2.0)
+
+    # simple trend slope (difference between first and last available)
+    def slope(values: list[float]) -> float:
+        if len(values) < 2:
+            return 0.0
+        return values[-1] - values[0]
+
+    temp_slope = slope(temps)
+    pm25_slope = slope(pm25s)
+
+    # Combine into 0–100 score (simple, transparent scaling)
+    # You can tune weights in the report and justify them.
+    score = (
+        min(temp_std * 5.0, 35.0) +
+        min(pm25_std * 1.0, 35.0) +
+        min((temp_anom + pm25_anom) * 50.0, 20.0) +
+        min((abs(temp_slope) + abs(pm25_slope)) * 2.0, 10.0)
+    )
+
+    score = float(max(0.0, min(100.0, score)))
+
+    label = "Low" if score < 34 else ("Moderate" if score < 67 else "High")
+
+    return schemas.RiskScoreOut(
+        city_id=city_id,
+        start=start,
+        end=end,
+        risk_score=score,
+        label=label,
+        components={
+            "temp_std": float(temp_std),
+            "pm25_std": float(pm25_std),
+            "temp_anomaly_rate": float(temp_anom),
+            "pm25_anomaly_rate": float(pm25_anom),
+            "temp_slope": float(temp_slope),
+            "pm25_slope": float(pm25_slope),
+        },
+    )
+@app.get("/cities/{city_id}/regimes", response_model=schemas.RegimesOut)
+def city_regimes(
+    city_id: int,
+    metric: str = Query("temp_c", pattern="^(temp_c|pm25)$"),
+    start: date = Query(...),
+    end: date = Query(...),
+    window: int = Query(14, ge=3, le=120),
+    db: Session = Depends(get_db),
+):
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    get_city_or_404(db, city_id)
+
+    field = models.Observation.temp_c if metric == "temp_c" else models.Observation.pm25
+
+    rows = (
+        db.query(models.Observation.obs_date, field)
+        .filter(models.Observation.city_id == city_id)
+        .filter(models.Observation.obs_date >= start)
+        .filter(models.Observation.obs_date <= end)
+        .order_by(models.Observation.obs_date.asc())
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No observations for that city and date range.")
+
+    dates = [d for d, _ in rows]
+    values = [float(v) if v is not None else None for _, v in rows]
+
+    # Use rolling std as volatility proxy.
+    stds = []
+    for i in range(len(values)):
+        stds.append(_rolling_std(values, window, i))
+
+    # Determine thresholds from observed rolling std distribution
+    std_vals = [s for s in stds if s is not None]
+    if len(std_vals) < 3:
+        # Not enough data; mark everything Stable
+        points = [
+            schemas.RegimePoint(date=dates[i], value=values[i], rolling_std=stds[i], regime="Stable")
+            for i in range(len(values))
+        ]
+        return schemas.RegimesOut(city_id=city_id, metric=metric, start=start, end=end, window=window, points=points)
+
+    qs = quantiles(std_vals, n=4, method="inclusive")
+    q1, q3 = float(qs[0]), float(qs[2])
+
+    def classify(s: float | None) -> Literal["Stable", "Volatile", "Extreme"]:
+        if s is None:
+            return "Stable"
+        if s >= q3:
+            return "Extreme"
+        if s >= q1:
+            return "Volatile"
+        return "Stable"
+
+    points = [
+        schemas.RegimePoint(
+            date=dates[i],
+            value=values[i],
+            rolling_std=stds[i],
+            regime=classify(stds[i]),
+        )
+        for i in range(len(values))
+    ]
+
+    return schemas.RegimesOut(
+        city_id=city_id, metric=metric, start=start, end=end, window=window, points=points
     )

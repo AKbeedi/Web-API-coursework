@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Climate Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px 14px; }
+    label { font-size: 12px; display: block; margin-bottom: 6px; }
+    select, input { padding: 8px; border-radius: 10px; border: 1px solid #ccc; min-width: 180px; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: 1fr 320px; gap: 14px; margin-top: 14px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    .big { font-size: 30px; font-weight: 700; }
+    .muted { color: #666; font-size: 12px; }
+    .pill { display:inline-block; padding: 4px 10px; border:1px solid #ddd; border-radius:999px; font-size: 12px; }
+    .stack { display:flex; flex-direction:column; gap:10px; }
+  </style>
+</head>
+<body>
+  <h2>Climate & Urban Environment Dashboard</h2>
+  <div class="muted">Interactive frontend consuming your FastAPI analytics endpoints.</div>
+
+  <div class="row card" style="margin-top:12px;">
+    <div>
+      <label>City</label>
+      <select id="citySelect"></select>
+    </div>
+
+    <div>
+      <label>Metric</label>
+      <select id="metricSelect">
+        <option value="temp_c">Temperature (°C)</option>
+        <option value="pm25">PM2.5</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Start</label>
+      <input id="startInput" type="date" />
+    </div>
+
+    <div>
+      <label>End</label>
+      <input id="endInput" type="date" />
+    </div>
+
+    <div>
+      <label>Anomaly method</label>
+      <select id="methodSelect">
+        <option value="zscore">z-score</option>
+        <option value="rolling_zscore">rolling z-score</option>
+        <option value="iqr">IQR</option>
+      </select>
+    </div>
+
+    <div id="thresholdBox">
+      <label>Threshold</label>
+      <input id="thresholdInput" type="number" step="0.1" value="2.0" />
+    </div>
+
+    <div id="windowBox" style="display:none;">
+      <label>Window (days)</label>
+      <input id="windowInput" type="number" step="1" value="14" />
+    </div>
+
+    <div id="kBox" style="display:none;">
+      <label>IQR k</label>
+      <input id="kInput" type="number" step="0.1" value="1.5" />
+    </div>
+
+    <button id="runBtn">Run</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="muted">Risk Score</div>
+        <div class="big" id="riskScore">—</div>
+        <div class="pill" id="riskLabel">—</div>
+        <div class="muted" id="riskMeta" style="margin-top:8px;">—</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Anomalies</div>
+        <div class="big" id="anomalyCount">—</div>
+        <div class="muted" id="anomalyMeta">—</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Regimes</div>
+        <div id="regimeMeta" class="muted">—</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const apiBase = "";
+
+let chart;
+const qs = (id) => document.getElementById(id);
+
+function todayISO(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+function daysAgoISO(n){
+  const d = new Date();
+  d.setDate(d.getDate()-n);
+  return d.toISOString().slice(0,10);
+}
+
+function updateMethodUI(){
+  const m = qs("methodSelect").value;
+  qs("thresholdBox").style.display = (m === "zscore" || m === "rolling_zscore") ? "" : "none";
+  qs("windowBox").style.display = (m === "rolling_zscore") ? "" : "none";
+  qs("kBox").style.display = (m === "iqr") ? "" : "none";
+}
+
+async function fetchJSON(path){
+  const r = await fetch(apiBase + path);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadCities(){
+  const cities = await fetchJSON("/cities");
+  const sel = qs("citySelect");
+  sel.innerHTML = "";
+  for (const c of cities){
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.name}, ${c.country}`;
+    sel.appendChild(opt);
+  }
+}
+
+function setSummaryCards(risk, anomalies, regimes){
+  qs("riskScore").textContent = risk?.risk_score ?? "—";
+  qs("riskLabel").textContent = risk?.label ?? "—";
+  qs("riskMeta").textContent = risk ? `Temp std: ${(+risk.components.temp_std).toFixed(2)} • PM2.5 std: ${(+risk.components.pm25_std).toFixed(2)}` : "—";
+
+  qs("anomalyCount").textContent = anomalies?.anomalies?.length ?? "—";
+  qs("anomalyMeta").textContent = anomalies ? `${anomalies.method} • ${anomalies.metric}` : "—";
+
+  if (regimes){
+    const counts = {Stable:0, Volatile:0, Extreme:0};
+    for (const p of regimes.points) counts[p.regime] = (counts[p.regime] ?? 0) + 1;
+    qs("regimeMeta").textContent = `Stable: ${counts.Stable}, Volatile: ${counts.Volatile}, Extreme: ${counts.Extreme} (window=${regimes.window})`;
+  } else {
+    qs("regimeMeta").textContent = "—";
+  }
+}
+
+function renderChart(obs, anomalies, regimes){
+  const labels = obs.map(o => o.date);
+  const values = obs.map(o => o.value);
+
+  const anomDates = new Set((anomalies?.anomalies ?? []).map(a => a.date));
+  const pointRadius = labels.map(d => anomDates.has(d) ? 5 : 2);
+
+  const regimeByDate = new Map((regimes?.points ?? []).map(p => [p.date, p.regime]));
+  const pointStyle = labels.map(d => {
+    const r = regimeByDate.get(d);
+    if (r === "Extreme") return "triangle";
+    if (r === "Volatile") return "rectRot";
+    return "circle";
+  });
+
+  const ctx = qs("chart");
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Value",
+        data: values,
+        pointRadius,
+        pointStyle,
+        tension: 0.15,
+      }]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            afterLabel: (item) => {
+              const d = labels[item.dataIndex];
+              const r = regimeByDate.get(d);
+              const isA = anomDates.has(d);
+              const extra = [];
+              if (r) extra.push(`Regime: ${r}`);
+              if (isA) extra.push("Anomaly");
+              return extra.length ? extra.join(" • ") : "";
+            }
+          }
+        }
+      },
+      scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } } }
+    }
+  });
+}
+
+async function run(){
+  const cityId = qs("citySelect").value;
+  const metric = qs("metricSelect").value;
+  const start = qs("startInput").value;
+  const end = qs("endInput").value;
+  const method = qs("methodSelect").value;
+
+  const threshold = qs("thresholdInput").value;
+  const window = qs("windowInput").value;
+  const k = qs("kInput").value;
+
+  // Observations (uses your pagination endpoint)
+  const obsRaw = await fetchJSON(`/observations?city_id=${cityId}&start=${start}&end=${end}&limit=2000&offset=0&sort=obs_date&order=asc`);
+  const obs = obsRaw.map(o => ({ date: o.date, value: metric === "temp_c" ? o.temp_c : o.pm25 }))
+                   .filter(o => o.value !== null && o.value !== undefined);
+
+  // Anomalies
+  let anomUrl = `/cities/${cityId}/anomalies?metric=${metric}&start=${start}&end=${end}&method=${method}`;
+  if (method === "zscore" || method === "rolling_zscore") anomUrl += `&threshold=${threshold}`;
+  if (method === "rolling_zscore") anomUrl += `&window=${window}`;
+  if (method === "iqr") anomUrl += `&k=${k}`;
+  const anomalies = await fetchJSON(anomUrl);
+
+  // Regimes
+  const regimes = await fetchJSON(`/cities/${cityId}/regimes?metric=${metric}&start=${start}&end=${end}&window=${window}`);
+
+  // Risk score
+  const risk = await fetchJSON(`/cities/${cityId}/risk-score?start=${start}&end=${end}`);
+
+  setSummaryCards(risk, anomalies, regimes);
+  renderChart(obs, anomalies, regimes);
+}
+
+(async function init(){
+  qs("startInput").value = daysAgoISO(30);
+  qs("endInput").value = todayISO();
+
+  qs("methodSelect").addEventListener("change", updateMethodUI);
+  qs("runBtn").addEventListener("click", () => run().catch(e => alert(e.message)));
+  updateMethodUI();
+
+  await loadCities();
+  await run().catch(e => alert(e.message));
+})();
+</script>
+</body>
+</html>

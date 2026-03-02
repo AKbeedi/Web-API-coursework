@@ -18,6 +18,9 @@ from math import sqrt
 from statistics import quantiles
 from typing import Literal  
 
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 def _mean_std(values: list[float]) -> tuple[float, float]:
     n = len(values)
     mean = sum(values) / n
@@ -58,7 +61,11 @@ def on_startup():
     # models must be imported before this so City is registered
     Base.metadata.create_all(bind=engine)
 
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    return FileResponse("app/static/dashboard.html")
 
 
 def get_city_or_404(db: Session, city_id: int) -> models.City:

@@ -1,6 +1,7 @@
 import csv
 import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.path.append(".")
 
@@ -11,10 +12,10 @@ Base.metadata.create_all(bind=engine)
 
 """
 Expected CSV headers:
-date,temp_c,pm25
+city,country,lat,lon,obs_date,temp_c,pm25
 
 Example row:
-2025-01-01,5.2,12.8
+London,United Kingdom,51.52,-0.11,2024-05-16,14.0,16.9
 """
 
 def parse_float(s: str):
@@ -24,59 +25,69 @@ def parse_float(s: str):
     return float(s)
 
 def main():
-    if len(sys.argv) < 7:
+    if len(sys.argv) < 2:
         print(
             "Usage:\n"
-            "  python scripts/import_observations_csv.py <csv_path> <city_name> <country> <lat> <lon> <date_format>\n\n"
+            "  python scripts/import_observations_csv.py <csv_path>\n\n"
             "Example:\n"
-            "  python scripts/import_observations_csv.py data/sample_observations.csv Leeds UK 53.8008 -1.5491 %Y-%m-%d\n"
+            "  python scripts/import_observations_csv.py data/clean_weather.csv\n"
         )
         sys.exit(1)
 
-    csv_path = sys.argv[1]
-    city_name = sys.argv[2]
-    country = sys.argv[3]
-    lat = float(sys.argv[4])
-    lon = float(sys.argv[5])
-    date_format = sys.argv[6]
+    csv_path = Path(sys.argv[1])
+
+    if not csv_path.exists():
+        print(f"File not found: {csv_path}")
+        sys.exit(1)
 
     db = SessionLocal()
 
-    city = (
-        db.query(models.City)
-        .filter(models.City.name == city_name)
-        .filter(models.City.country == country)
-        .one_or_none()
-    )
-    if city is None:
-        city = models.City(name=city_name, country=country, lat=lat, lon=lon)
-        db.add(city)
-        db.commit()
-        db.refresh(city)
-        print(f"Created city: {city.id} {city.name}, {city.country}")
-    else:
-        print(f"Using existing city: {city.id} {city.name}, {city.country}")
-
     inserted = 0
     skipped = 0
+    created_cities = 0
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        required = {"date", "temp_c", "pm25"}
+        required = {"city", "country", "lat", "lon", "obs_date", "temp_c", "pm25"}
+
         if not required.issubset(set(reader.fieldnames or [])):
             raise ValueError(f"CSV must contain headers: {sorted(required)}")
 
         for row in reader:
-            d = datetime.strptime(row["date"].strip(), date_format).date()
+            city_name = row["city"].strip()
+            country = row["country"].strip()
+            lat = float(row["lat"])
+            lon = float(row["lon"])
+            d = datetime.strptime(row["obs_date"].strip(), "%Y-%m-%d").date()
             temp_c = parse_float(row.get("temp_c", ""))
             pm25 = parse_float(row.get("pm25", ""))
 
+            city = (
+                db.query(models.City)
+                .filter(models.City.name == city_name)
+                .filter(models.City.country == country)
+                .one_or_none()
+            )
+
+            if city is None:
+                city = models.City(
+                    name=city_name,
+                    country=country,
+                    lat=lat,
+                    lon=lon
+                )
+                db.add(city)
+                db.commit()
+                db.refresh(city)
+                created_cities += 1
+                print(f"Created city: {city.id} {city.name}, {city.country}")
+
             obs = models.Observation(
-            city_id=city.id,
-            obs_date=d,     # renamed
-            temp_c=temp_c,
-            pm25=pm25
-        )
+                city_id=city.id,
+                obs_date=d,
+                temp_c=temp_c,
+                pm25=pm25
+            )
 
             db.add(obs)
             try:
@@ -87,7 +98,11 @@ def main():
                 skipped += 1
 
     db.close()
-    print(f"Done. Inserted: {inserted}, Skipped (duplicates/errors): {skipped}")
+    print(
+        f"Done. Created cities: {created_cities}, "
+        f"Inserted observations: {inserted}, "
+        f"Skipped (duplicates/errors): {skipped}"
+    )
 
 if __name__ == "__main__":
     main()

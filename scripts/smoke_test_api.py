@@ -44,34 +44,46 @@ def main():
     for city_name, city_id in TEST_CITY_IDS.items():
         city_tests = [
             (f"{city_name} city lookup", f"{BASE_URL}/cities/{city_id}", 200),
+
             (
                 f"{city_name} observations",
                 f"{BASE_URL}/observations?city_id={city_id}",
                 200,
             ),
+
             (
                 f"{city_name} summary",
                 f"{BASE_URL}/cities/{city_id}/summary?start=2024-05-16&end=2024-05-21",
                 200,
             ),
+
             (
                 f"{city_name} temp trend",
                 f"{BASE_URL}/cities/{city_id}/trend?metric=temp_c&start=2024-05-16&end=2024-05-21",
                 200,
             ),
+
             (
                 f"{city_name} pm25 anomalies",
                 f"{BASE_URL}/cities/{city_id}/anomalies?metric=pm25&start=2024-05-16&end=2024-05-21",
                 200,
             ),
+
             (
                 f"{city_name} risk score",
                 f"{BASE_URL}/cities/{city_id}/risk-score?start=2024-05-16&end=2024-05-21",
                 200,
             ),
+
             (
                 f"{city_name} regimes",
                 f"{BASE_URL}/cities/{city_id}/regimes?metric=pm25&start=2024-05-16&end=2024-05-21",
+                200,
+            ),
+
+            (
+                f"{city_name} insights",
+                f"{BASE_URL}/cities/{city_id}/insights?start=2024-05-16&end=2024-05-21",
                 200,
             ),
         ]
@@ -81,27 +93,70 @@ def main():
             if check(name, url, expected):
                 passed += 1
 
+    # Comparison + rankings tests
+    extra_tests = [
+
+        (
+            "London vs Beijing comparison",
+            f"{BASE_URL}/cities/compare?city1=133&city2=92&start=2024-05-16&end=2024-05-21",
+            200,
+        ),
+
+        (
+            "City rankings by PM2.5",
+            f"{BASE_URL}/cities/rankings?metric=pm25&start=2024-05-16&end=2024-05-21&limit=5",
+            200,
+        ),
+
+        (
+            "City rankings by temperature",
+            f"{BASE_URL}/cities/rankings?metric=temp_c&start=2024-05-16&end=2024-05-21&limit=5",
+            200,
+        ),
+
+        (
+            "City rankings by risk",
+            f"{BASE_URL}/cities/rankings?metric=risk&start=2024-05-16&end=2024-05-21&limit=5",
+            200,
+        ),
+    ]
+
+    for name, url, expected in extra_tests:
+        total += 1
+        if check(name, url, expected):
+            passed += 1
+
     # Invalid-input tests
     invalid_tests = [
+
         (
             "Invalid trend metric returns 422",
             f"{BASE_URL}/cities/133/trend?metric=wrong&start=2024-05-16&end=2024-05-21",
             422,
         ),
+
         (
             "Invalid date range returns 422",
             f"{BASE_URL}/cities/133/summary?start=2024-05-21&end=2024-05-16",
             422,
         ),
+
         (
             "No data range returns 404",
             f"{BASE_URL}/cities/133/summary?start=2020-01-01&end=2020-01-02",
             404,
         ),
+
         (
-            "London vs Beijing comparison",
-            f"{BASE_URL}/cities/compare?city1=133&city2=92&start=2024-05-16&end=2024-05-21",
-            200,
+            "Rankings invalid metric returns 422",
+            f"{BASE_URL}/cities/rankings?metric=wrong&start=2024-05-16&end=2024-05-21",
+            422,
+        ),
+
+        (
+            "Rankings invalid date range returns 422",
+            f"{BASE_URL}/cities/rankings?metric=pm25&start=2024-05-21&end=2024-05-16",
+            422,
         ),
     ]
 

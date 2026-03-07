@@ -136,3 +136,46 @@ class RegimesOut(BaseModel):
     end: DateType
     window: int
     points: list[RegimePoint]
+    
+    
+class CityCompareStats(BaseModel):
+    city_id: int
+    city_name: str
+    country: str
+    start: DateType
+    end: DateType
+    count_days: int
+    avg_temp_c: float | None
+    avg_pm25: float | None
+    max_temp_c: float | None
+    max_pm25: float | None
+
+
+class CityCompareOut(BaseModel):
+    city_1: CityCompareStats
+    city_2: CityCompareStats
+    hotter_city: str | None
+    more_polluted_city: str | None
+    temp_diff_avg: float | None
+    pm25_diff_avg: float | None
+
+class CityInsightsOut(BaseModel):
+    city_id: int
+    city_name: str
+    start: DateType
+    end: DateType
+    insight: str
+
+class CityRankingItem(BaseModel):
+    city_id: int
+    city_name: str
+    country: str
+    value: float
+
+
+class CityRankingOut(BaseModel):
+    metric: str
+    start: DateType
+    end: DateType
+    limit: int
+    rankings: list[CityRankingItem]

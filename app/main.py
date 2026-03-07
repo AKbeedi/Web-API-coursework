@@ -108,6 +108,86 @@ def create_city(payload: schemas.CityCreate, db: Session = Depends(get_db)):
 def list_cities(db: Session = Depends(get_db)):
     return db.query(models.City).order_by(models.City.country.asc(), models.City.name.asc()).all()
 
+@app.get("/cities/compare", response_model=schemas.CityCompareOut)
+def compare_cities(
+    city1: int = Query(..., ge=1),
+    city2: int = Query(..., ge=1),
+    start: date = Query(...),
+    end: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    if city1 == city2:
+        raise HTTPException(status_code=422, detail="city1 and city2 must be different")
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    c1 = get_city_or_404(db, city1)
+    c2 = get_city_or_404(db, city2)
+
+    def build_stats(city: models.City) -> schemas.CityCompareStats:
+        rows = (
+            db.query(models.Observation)
+            .filter(models.Observation.city_id == city.id)
+            .filter(models.Observation.obs_date >= start)
+            .filter(models.Observation.obs_date <= end)
+            .all()
+        )
+
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No observations for {city.name} in that date range."
+            )
+
+        temps = [float(r.temp_c) for r in rows if r.temp_c is not None]
+        pm25s = [float(r.pm25) for r in rows if r.pm25 is not None]
+
+        return schemas.CityCompareStats(
+            city_id=city.id,
+            city_name=city.name,
+            country=city.country,
+            start=start,
+            end=end,
+            count_days=len(rows),
+            avg_temp_c=(sum(temps) / len(temps)) if temps else None,
+            avg_pm25=(sum(pm25s) / len(pm25s)) if pm25s else None,
+            max_temp_c=max(temps) if temps else None,
+            max_pm25=max(pm25s) if pm25s else None,
+        )
+
+    s1 = build_stats(c1)
+    s2 = build_stats(c2)
+
+    hotter_city = None
+    if s1.avg_temp_c is not None and s2.avg_temp_c is not None:
+        if s1.avg_temp_c > s2.avg_temp_c:
+            hotter_city = s1.city_name
+        elif s2.avg_temp_c > s1.avg_temp_c:
+            hotter_city = s2.city_name
+
+    more_polluted_city = None
+    if s1.avg_pm25 is not None and s2.avg_pm25 is not None:
+        if s1.avg_pm25 > s2.avg_pm25:
+            more_polluted_city = s1.city_name
+        elif s2.avg_pm25 > s1.avg_pm25:
+            more_polluted_city = s2.city_name
+
+    temp_diff_avg = None
+    if s1.avg_temp_c is not None and s2.avg_temp_c is not None:
+        temp_diff_avg = round(s1.avg_temp_c - s2.avg_temp_c, 2)
+
+    pm25_diff_avg = None
+    if s1.avg_pm25 is not None and s2.avg_pm25 is not None:
+        pm25_diff_avg = round(s1.avg_pm25 - s2.avg_pm25, 2)
+
+    return schemas.CityCompareOut(
+        city_1=s1,
+        city_2=s2,
+        hotter_city=hotter_city,
+        more_polluted_city=more_polluted_city,
+        temp_diff_avg=temp_diff_avg,
+        pm25_diff_avg=pm25_diff_avg,
+    )
 
 @app.get("/cities/{city_id}", response_model=schemas.CityOut)
 def get_city(city_id: int, db: Session = Depends(get_db)):
@@ -569,4 +649,181 @@ def city_regimes(
 
     return schemas.RegimesOut(
         city_id=city_id, metric=metric, start=start, end=end, window=window, points=points
+    )
+    
+@app.get("/cities/{city_id}/insights", response_model=schemas.CityInsightsOut)
+def city_insights(
+    city_id: int,
+    start: date = Query(...),
+    end: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    city = get_city_or_404(db, city_id)
+
+    rows = (
+        db.query(models.Observation)
+        .filter(models.Observation.city_id == city_id)
+        .filter(models.Observation.obs_date >= start)
+        .filter(models.Observation.obs_date <= end)
+        .all()
+    )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No observations for that date range.")
+
+    temps = [float(r.temp_c) for r in rows if r.temp_c is not None]
+    pm25s = [float(r.pm25) for r in rows if r.pm25 is not None]
+
+    avg_temp = sum(temps) / len(temps) if temps else None
+    avg_pm25 = sum(pm25s) / len(pm25s) if pm25s else None
+
+    insight_parts = []
+
+    # Temperature interpretation
+    if avg_temp is not None:
+        if avg_temp > 30:
+            insight_parts.append("very high temperatures")
+        elif avg_temp > 20:
+            insight_parts.append("moderately warm temperatures")
+        else:
+            insight_parts.append("relatively mild temperatures")
+
+    # Pollution interpretation
+    if avg_pm25 is not None:
+        if avg_pm25 > 100:
+            insight_parts.append("extreme PM2.5 pollution")
+        elif avg_pm25 > 50:
+            insight_parts.append("high PM2.5 pollution")
+        elif avg_pm25 > 15:
+            insight_parts.append("moderate air pollution")
+        else:
+            insight_parts.append("relatively clean air")
+
+    # ----------------------------
+    # Risk score calculation
+    # ----------------------------
+    risk_score = 0
+
+    if avg_temp is not None:
+        risk_score += avg_temp * 0.5
+
+    if avg_pm25 is not None:
+        risk_score += avg_pm25 * 0.3
+
+    if risk_score < 30:
+        risk_level = "Low"
+    elif risk_score < 70:
+        risk_level = "Moderate"
+    else:
+        risk_level = "High"
+
+    # ----------------------------
+    # Final insight text
+    # ----------------------------
+    insight = (
+        f"{city.name} experienced "
+        + " and ".join(insight_parts)
+        + f" between {start} and {end}. "
+        + f"Overall environmental risk was classified as {risk_level}."
+    )
+
+    return schemas.CityInsightsOut(
+        city_id=city.id,
+        city_name=city.name,
+        start=start,
+        end=end,
+        insight=insight,
+    )
+    
+@app.get("/cities/rankings", response_model=schemas.CityRankingOut)
+def city_rankings(
+    metric: str = Query(..., pattern="^(temp_c|pm25|risk)$"),
+    start: date = Query(...),
+    end: date = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+
+    cities = db.query(models.City).all()
+    rankings: list[schemas.CityRankingItem] = []
+
+    for city in cities:
+        rows = (
+            db.query(models.Observation)
+            .filter(models.Observation.city_id == city.id)
+            .filter(models.Observation.obs_date >= start)
+            .filter(models.Observation.obs_date <= end)
+            .all()
+        )
+
+        if not rows:
+            continue
+
+        temps = [float(r.temp_c) for r in rows if r.temp_c is not None]
+        pm25s = [float(r.pm25) for r in rows if r.pm25 is not None]
+
+        value = None
+
+        if metric == "temp_c":
+            if temps:
+                value = sum(temps) / len(temps)
+
+        elif metric == "pm25":
+            if pm25s:
+                value = sum(pm25s) / len(pm25s)
+
+        elif metric == "risk":
+            temp_std = _mean_std(temps)[1] if len(temps) >= 2 else 0.0
+            pm25_std = _mean_std(pm25s)[1] if len(pm25s) >= 2 else 0.0
+
+            def anomaly_rate(values: list[float], threshold: float = 2.0) -> float:
+                if len(values) < 3:
+                    return 0.0
+                mean, std = _mean_std(values)
+                if std == 0:
+                    return 0.0
+                count = sum(1 for v in values if abs((v - mean) / std) >= threshold)
+                return count / len(values)
+
+            def slope(values: list[float]) -> float:
+                if len(values) < 2:
+                    return 0.0
+                return values[-1] - values[0]
+
+            temp_anom = anomaly_rate(temps, 2.0)
+            pm25_anom = anomaly_rate(pm25s, 2.0)
+            temp_slope = slope(temps)
+            pm25_slope = slope(pm25s)
+
+            value = (
+                min(temp_std * 5.0, 35.0)
+                + min(pm25_std * 1.0, 35.0)
+                + min((temp_anom + pm25_anom) * 50.0, 20.0)
+                + min((abs(temp_slope) + abs(pm25_slope)) * 2.0, 10.0)
+            )
+            value = float(max(0.0, min(100.0, value)))
+
+        if value is not None:
+            rankings.append(
+                schemas.CityRankingItem(
+                    city_id=city.id,
+                    city_name=city.name,
+                    country=city.country,
+                    value=round(float(value), 2),
+                )
+            )
+
+    rankings.sort(key=lambda x: x.value, reverse=True)
+
+    return schemas.CityRankingOut(
+        metric=metric,
+        start=start,
+        end=end,
+        limit=limit,
+        rankings=rankings[:limit],
     )

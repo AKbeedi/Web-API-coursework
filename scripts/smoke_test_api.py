@@ -98,6 +98,11 @@ def main():
             f"{BASE_URL}/cities/133/summary?start=2020-01-01&end=2020-01-02",
             404,
         ),
+        (
+            "London vs Beijing comparison",
+            f"{BASE_URL}/cities/compare?city1=133&city2=92&start=2024-05-16&end=2024-05-21",
+            200,
+        ),
     ]
 
     for name, url, expected in invalid_tests:

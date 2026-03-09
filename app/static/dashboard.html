@@ -6,28 +6,161 @@
   <title>Climate Analytics Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px 14px; }
-    label { font-size: 12px; display: block; margin-bottom: 6px; }
-    select, input { padding: 8px; border-radius: 10px; border: 1px solid #ccc; min-width: 180px; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    .grid { display: grid; grid-template-columns: 1fr 320px; gap: 14px; margin-top: 14px; }
-    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .big { font-size: 30px; font-weight: 700; }
-    .muted { color: #666; font-size: 12px; }
-    .pill { display:inline-block; padding: 4px 10px; border:1px solid #ddd; border-radius:999px; font-size: 12px; }
-    .stack { display:flex; flex-direction:column; gap:10px; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 20px;
+      background: #fafafa;
+      color: #222;
+    }
+
+    h2 { margin-bottom: 4px; }
+
+    .muted {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    label {
+      font-size: 12px;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    select, input {
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      min-width: 180px;
+      background: white;
+    }
+
+    button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #f3f3f3;
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .big {
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border: 1px solid #ddd;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .status.info {
+      display: block;
+      background: #eef5ff;
+      border: 1px solid #cfe0ff;
+      color: #184a8b;
+    }
+
+    .status.warn {
+      display: block;
+      background: #fff8e7;
+      border: 1px solid #ecd28b;
+      color: #8a6500;
+    }
+
+    .status.error {
+      display: block;
+      background: #fff0f0;
+      border: 1px solid #f0c2c2;
+      color: #8b1e1e;
+    }
+
+    .compare-box {
+      margin-top: 14px;
+    }
+
+    .compare-text {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .range-box {
+      margin-top: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    canvas {
+      max-height: 520px;
+    }
   </style>
 </head>
 <body>
   <h2>Climate & Urban Environment Dashboard</h2>
-  <div class="muted">Interactive frontend consuming your FastAPI analytics endpoints.</div>
+  <div class="muted">Interactive frontend consuming FastAPI analytics endpoints.</div>
 
   <div class="row card" style="margin-top:12px;">
     <div>
       <label>City</label>
       <select id="citySelect"></select>
+    </div>
+
+    <div>
+      <label>Compare with</label>
+      <select id="compareCitySelect"></select>
     </div>
 
     <div>
@@ -57,6 +190,16 @@
       </select>
     </div>
 
+    <div>
+      <label>Aggregation</label>
+      <select id="aggregationSelect">
+        <option value="auto">Auto</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+
     <div id="thresholdBox">
       <label>Threshold</label>
       <input id="thresholdInput" type="number" step="0.1" value="2.0" />
@@ -73,6 +216,13 @@
     </div>
 
     <button id="runBtn">Run</button>
+  </div>
+
+  <div id="statusBox" class="status info">Loading…</div>
+
+  <div class="card range-box">
+    <div class="muted">Displayed range</div>
+    <div id="rangeInfo">—</div>
   </div>
 
   <div class="grid">
@@ -98,79 +248,298 @@
         <div class="muted">Regimes</div>
         <div id="regimeMeta" class="muted">—</div>
       </div>
+
+      <div class="card">
+        <div class="muted">Summary</div>
+        <div id="summaryMeta" class="muted">—</div>
+      </div>
     </div>
+  </div>
+
+  <div class="card compare-box">
+    <div class="muted">Comparison insight</div>
+    <div id="compareText" class="compare-text">—</div>
   </div>
 
 <script>
 const apiBase = "";
-
 let chart;
+
 const qs = (id) => document.getElementById(id);
 
-function todayISO(){
-  const d = new Date();
-  return d.toISOString().slice(0,10);
-}
-function daysAgoISO(n){
-  const d = new Date();
-  d.setDate(d.getDate()-n);
-  return d.toISOString().slice(0,10);
+function showStatus(message, type = "info") {
+  const box = qs("statusBox");
+  box.textContent = message;
+  box.style.display = "block";
+  box.className = `status ${type}`;
 }
 
-function updateMethodUI(){
+function clearStatus() {
+  const box = qs("statusBox");
+  box.style.display = "none";
+  box.className = "status";
+  box.textContent = "";
+}
+
+function updateMethodUI() {
   const m = qs("methodSelect").value;
   qs("thresholdBox").style.display = (m === "zscore" || m === "rolling_zscore") ? "" : "none";
   qs("windowBox").style.display = (m === "rolling_zscore") ? "" : "none";
   qs("kBox").style.display = (m === "iqr") ? "" : "none";
 }
 
-async function fetchJSON(path){
+async function fetchJSON(path) {
   const r = await fetch(apiBase + path);
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(text);
+  }
   return r.json();
 }
 
-async function loadCities(){
+async function loadCities() {
   const cities = await fetchJSON("/cities");
-  const sel = qs("citySelect");
-  sel.innerHTML = "";
-  for (const c of cities){
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    opt.textContent = `${c.name}, ${c.country}`;
-    sel.appendChild(opt);
+  const sel1 = qs("citySelect");
+  const sel2 = qs("compareCitySelect");
+
+  sel1.innerHTML = "";
+  sel2.innerHTML = "";
+
+  for (const c of cities) {
+    const label = `${c.name}, ${c.country}`;
+
+    const opt1 = document.createElement("option");
+    opt1.value = c.id;
+    opt1.textContent = label;
+    sel1.appendChild(opt1);
+
+    const opt2 = document.createElement("option");
+    opt2.value = c.id;
+    opt2.textContent = label;
+    sel2.appendChild(opt2);
+  }
+
+  if (sel1.options.length > 0) sel1.selectedIndex = 0;
+  if (sel2.options.length > 1) sel2.selectedIndex = 1;
+}
+
+function setRiskPillStyle(label) {
+  const pill = qs("riskLabel");
+  pill.style.background = "";
+  pill.style.borderColor = "#ddd";
+  pill.style.color = "#222";
+
+  if (label === "Low") {
+    pill.style.background = "#e8f7ed";
+    pill.style.borderColor = "#a6e3b8";
+    pill.style.color = "#1b7f3a";
+  } else if (label === "Moderate") {
+    pill.style.background = "#fff4e5";
+    pill.style.borderColor = "#ffd8a8";
+    pill.style.color = "#a15c00";
+  } else if (label === "High") {
+    pill.style.background = "#ffe8e8";
+    pill.style.borderColor = "#ffb3b3";
+    pill.style.color = "#a30000";
   }
 }
 
-function setSummaryCards(risk, anomalies, regimes){
-  qs("riskScore").textContent = risk?.risk_score ?? "—";
+function setSummaryCards(risk, anomalies, regimes, summary, metric) {
+  qs("riskScore").textContent = risk?.risk_score?.toFixed?.(2) ?? risk?.risk_score ?? "—";
   qs("riskLabel").textContent = risk?.label ?? "—";
-  qs("riskMeta").textContent = risk ? `Temp std: ${(+risk.components.temp_std).toFixed(2)} • PM2.5 std: ${(+risk.components.pm25_std).toFixed(2)}` : "—";
+  setRiskPillStyle(risk?.label ?? "");
+
+  qs("riskMeta").textContent = risk
+    ? `Temp std: ${(+risk.components.temp_std).toFixed(2)} • PM2.5 std: ${(+risk.components.pm25_std).toFixed(2)}`
+    : "—";
 
   qs("anomalyCount").textContent = anomalies?.anomalies?.length ?? "—";
-  qs("anomalyMeta").textContent = anomalies ? `${anomalies.method} • ${anomalies.metric}` : "—";
+  qs("anomalyMeta").textContent = anomalies
+    ? `${anomalies.method} • ${anomalies.metric}`
+    : "—";
 
-  if (regimes){
-    const counts = {Stable:0, Volatile:0, Extreme:0};
-    for (const p of regimes.points) counts[p.regime] = (counts[p.regime] ?? 0) + 1;
-    qs("regimeMeta").textContent = `Stable: ${counts.Stable}, Volatile: ${counts.Volatile}, Extreme: ${counts.Extreme} (window=${regimes.window})`;
+  if (regimes) {
+    const counts = { Stable: 0, Volatile: 0, Extreme: 0 };
+    for (const p of regimes.points) {
+      counts[p.regime] = (counts[p.regime] ?? 0) + 1;
+    }
+    qs("regimeMeta").textContent =
+      `Stable: ${counts.Stable}, Volatile: ${counts.Volatile}, Extreme: ${counts.Extreme} (window=${regimes.window})`;
   } else {
     qs("regimeMeta").textContent = "—";
   }
+
+  if (summary) {
+    if (metric === "temp_c") {
+      qs("summaryMeta").textContent =
+        `Average temp: ${summary.avg_temp_c?.toFixed?.(2) ?? "—"} °C • Min: ${summary.min_temp_c ?? "—"} • Max: ${summary.max_temp_c ?? "—"} • Days: ${summary.count_days}`;
+    } else {
+      qs("summaryMeta").textContent =
+        `Average PM2.5: ${summary.avg_pm25?.toFixed?.(2) ?? "—"} • Min: ${summary.min_pm25 ?? "—"} • Max: ${summary.max_pm25 ?? "—"} • Days: ${summary.count_days}`;
+    }
+  } else {
+    qs("summaryMeta").textContent = "—";
+  }
 }
 
-function renderChart(obs, anomalies, regimes){
-  const labels = obs.map(o => o.date);
-  const values = obs.map(o => o.value);
+function formatDateLabel(dateStr, mode) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
 
-  const anomDates = new Set((anomalies?.anomalies ?? []).map(a => a.date));
-  const pointRadius = labels.map(d => anomDates.has(d) ? 5 : 2);
+  if (mode === "monthly") {
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short" });
+  }
 
-  const regimeByDate = new Map((regimes?.points ?? []).map(p => [p.date, p.regime]));
-  const pointStyle = labels.map(d => {
+  if (mode === "weekly") {
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  return dateStr;
+}
+
+function weekKeyFromDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function monthKeyFromDate(dateStr) {
+  return dateStr.slice(0, 7) + "-01";
+}
+
+function average(nums) {
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function aggregateTrendPoints(points, mode) {
+  if (mode === "daily") {
+    return points.map(p => ({ ...p, source_count: 1 }));
+  }
+
+  const groups = new Map();
+
+  for (const p of points) {
+    const key = mode === "weekly" ? weekKeyFromDate(p.date) : monthKeyFromDate(p.date);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+
+  const out = [];
+  for (const [key, arr] of groups.entries()) {
+    const values = arr.map(x => x.value).filter(v => v !== null && v !== undefined);
+    const moving = arr.map(x => x.moving_avg).filter(v => v !== null && v !== undefined);
+
+    out.push({
+      date: key,
+      value: average(values),
+      moving_avg: average(moving),
+      source_count: arr.length
+    });
+  }
+
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
+}
+
+function chooseAggregation(mode, pointCount) {
+  if (mode !== "auto") return mode;
+  if (pointCount <= 120) return "daily";
+  if (pointCount <= 365) return "weekly";
+  return "monthly";
+}
+
+function aggregateAnomalies(anomalies, mode) {
+  if (!anomalies || !anomalies.anomalies) return new Set();
+  if (mode === "daily") return new Set(anomalies.anomalies.map(a => a.date));
+
+  const keys = anomalies.anomalies.map(a =>
+    mode === "weekly" ? weekKeyFromDate(a.date) : monthKeyFromDate(a.date)
+  );
+  return new Set(keys);
+}
+
+function aggregateRegimes(regimes, mode) {
+  if (!regimes || !regimes.points) return new Map();
+
+  if (mode === "daily") {
+    return new Map(regimes.points.map(p => [p.date, p.regime]));
+  }
+
+  const grouped = new Map();
+
+  for (const p of regimes.points) {
+    const key = mode === "weekly" ? weekKeyFromDate(p.date) : monthKeyFromDate(p.date);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(p.regime);
+  }
+
+  const out = new Map();
+
+  for (const [key, arr] of grouped.entries()) {
+    const counts = { Stable: 0, Volatile: 0, Extreme: 0 };
+    for (const r of arr) counts[r] = (counts[r] ?? 0) + 1;
+
+    let dominant = "Stable";
+    if (counts.Extreme >= counts.Volatile && counts.Extreme >= counts.Stable) dominant = "Extreme";
+    else if (counts.Volatile >= counts.Stable) dominant = "Volatile";
+
+    out.set(key, dominant);
+  }
+
+  return out;
+}
+
+function setRangeInfo(selectedStart, selectedEnd, trendPoints, effectiveMode) {
+  if (!trendPoints.length) {
+    qs("rangeInfo").textContent = "No data available for this selection.";
+    return;
+  }
+
+  const actualStart = trendPoints[0].date;
+  const actualEnd = trendPoints[trendPoints.length - 1].date;
+
+  let text = `
+    <strong>Selected:</strong> ${selectedStart} to ${selectedEnd}<br>
+    <strong>Showing data from:</strong> ${actualStart} to ${actualEnd}<br>
+    <strong>Points plotted:</strong> ${trendPoints.length}<br>
+    <strong>Display mode:</strong> ${effectiveMode.charAt(0).toUpperCase() + effectiveMode.slice(1)}
+  `;
+
+  if (effectiveMode !== "daily") {
+    text += `<br><em>Displaying ${effectiveMode} averages for readability.</em>`;
+  }
+
+  qs("rangeInfo").innerHTML = text;
+}
+
+function renderChart(trend, anomalies, regimes, metric, aggregationMode) {
+  const effectiveMode = chooseAggregation(aggregationMode, trend.points.length);
+  const plottedPoints = aggregateTrendPoints(trend.points, effectiveMode);
+
+  const labels = plottedPoints.map(p => formatDateLabel(p.date, effectiveMode));
+  const values = plottedPoints.map(p => p.value);
+  const movingAvg = plottedPoints.map(p => p.moving_avg);
+
+  const anomKeys = aggregateAnomalies(anomalies, effectiveMode);
+  const regimeByDate = aggregateRegimes(regimes, effectiveMode);
+
+  const rawKeys = plottedPoints.map(p => p.date);
+  const manyPoints = plottedPoints.length > 120;
+
+  const pointRadius = rawKeys.map(d => anomKeys.has(d) ? 5 : (manyPoints ? 0 : 2.5));
+  const pointHoverRadius = rawKeys.map(d => anomKeys.has(d) ? 7 : 4);
+  const pointBackgroundColor = rawKeys.map(d => anomKeys.has(d) ? "#d9534f" : "#4e79a7");
+  const pointBorderColor = pointBackgroundColor;
+  const pointBorderWidth = rawKeys.map(d => anomKeys.has(d) ? 2 : 0);
+
+  const pointStyle = rawKeys.map(d => {
     const r = regimeByDate.get(d);
-    if (r === "Extreme") return "triangle";
-    if (r === "Volatile") return "rectRot";
+    if (anomKeys.has(d)) return "triangle";
+    if (r === "Extreme") return "rectRot";
+    if (r === "Volatile") return "circle";
     return "circle";
   });
 
@@ -181,13 +550,28 @@ function renderChart(obs, anomalies, regimes){
     type: "line",
     data: {
       labels,
-      datasets: [{
-        label: "Value",
-        data: values,
-        pointRadius,
-        pointStyle,
-        tension: 0.15,
-      }]
+      datasets: [
+        {
+          label: metric === "temp_c" ? "Temperature (°C)" : "PM2.5",
+          data: values,
+          borderWidth: 2,
+          tension: 0.15,
+          pointRadius,
+          pointHoverRadius,
+          pointStyle,
+          pointBackgroundColor,
+          pointBorderColor,
+          pointBorderWidth
+        },
+        {
+          label: "Moving average",
+          data: movingAvg,
+          borderWidth: 2,
+          borderDash: [6, 6],
+          pointRadius: 0,
+          tension: 0.15
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -196,65 +580,174 @@ function renderChart(obs, anomalies, regimes){
         tooltip: {
           callbacks: {
             afterLabel: (item) => {
-              const d = labels[item.dataIndex];
-              const r = regimeByDate.get(d);
-              const isA = anomDates.has(d);
+              const rawDate = rawKeys[item.dataIndex];
+              const r = regimeByDate.get(rawDate);
+              const isA = anomKeys.has(rawDate);
               const extra = [];
               if (r) extra.push(`Regime: ${r}`);
-              if (isA) extra.push("Anomaly");
-              return extra.length ? extra.join(" • ") : "";
+              if (isA) extra.push("Contains anomaly");
+              if (effectiveMode !== "daily" && plottedPoints[item.dataIndex]?.source_count) {
+                extra.push(`Aggregated from ${plottedPoints[item.dataIndex].source_count} observations`);
+              }
+              return extra.join(" • ");
             }
           }
         }
       },
-      scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } } }
+      scales: {
+        x: {
+          ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+        }
+      }
     }
   });
+
+  return { effectiveMode, plottedPoints };
 }
 
-async function run(){
+function renderCompare(compare) {
+  if (!compare) {
+    qs("compareText").textContent = "No comparison selected.";
+    return;
+  }
+
+  const c1 = compare.city_1;
+  const c2 = compare.city_2;
+
+  let text = `${c1.city_name} was compared with ${c2.city_name} from ${c1.start} to ${c1.end}. `;
+
+  if (compare.hotter_city) {
+    text += `${compare.hotter_city} had the higher average temperature. `;
+  } else {
+    text += `Both cities had similar average temperature. `;
+  }
+
+  if (compare.more_polluted_city) {
+    text += `${compare.more_polluted_city} had the higher average PM2.5 level. `;
+  } else {
+    text += `Both cities had similar average PM2.5 levels. `;
+  }
+
+  text += `Average temperature difference: ${compare.temp_diff_avg ?? "—"} °C. `;
+  text += `Average PM2.5 difference: ${compare.pm25_diff_avg ?? "—"}.`;
+
+  qs("compareText").textContent = text;
+}
+
+async function run() {
+  const runBtn = qs("runBtn");
+  runBtn.textContent = "Loading...";
+  runBtn.disabled = true;
+
+  showStatus("Loading dashboard data...", "info");
+
   const cityId = qs("citySelect").value;
+  const compareCityId = qs("compareCitySelect").value;
   const metric = qs("metricSelect").value;
   const start = qs("startInput").value;
   const end = qs("endInput").value;
   const method = qs("methodSelect").value;
-
   const threshold = qs("thresholdInput").value;
   const window = qs("windowInput").value;
   const k = qs("kInput").value;
+  const aggregationMode = qs("aggregationSelect").value;
 
-  // Observations (uses your pagination endpoint)
-  const obsRaw = await fetchJSON(`/observations?city_id=${cityId}&start=${start}&end=${end}&limit=2000&offset=0&sort=obs_date&order=asc`);
-  const obs = obsRaw.map(o => ({ date: o.date, value: metric === "temp_c" ? o.temp_c : o.pm25 }))
-                   .filter(o => o.value !== null && o.value !== undefined);
+  if (!cityId) {
+    showStatus("Please select a city.", "error");
+    runBtn.textContent = "Run";
+    runBtn.disabled = false;
+    return;
+  }
 
-  // Anomalies
-  let anomUrl = `/cities/${cityId}/anomalies?metric=${metric}&start=${start}&end=${end}&method=${method}`;
-  if (method === "zscore" || method === "rolling_zscore") anomUrl += `&threshold=${threshold}`;
-  if (method === "rolling_zscore") anomUrl += `&window=${window}`;
-  if (method === "iqr") anomUrl += `&k=${k}`;
-  const anomalies = await fetchJSON(anomUrl);
+  if (!start || !end) {
+    showStatus("Please choose both start and end dates.", "error");
+    runBtn.textContent = "Run";
+    runBtn.disabled = false;
+    return;
+  }
 
-  // Regimes
-  const regimes = await fetchJSON(`/cities/${cityId}/regimes?metric=${metric}&start=${start}&end=${end}&window=${window}`);
+  if (end < start) {
+    showStatus("End date must be after start date.", "error");
+    runBtn.textContent = "Run";
+    runBtn.disabled = false;
+    return;
+  }
 
-  // Risk score
-  const risk = await fetchJSON(`/cities/${cityId}/risk-score?start=${start}&end=${end}`);
+  try {
+    const trend = await fetchJSON(
+      `/cities/${cityId}/trend?metric=${metric}&start=${start}&end=${end}&window=7`
+    );
 
-  setSummaryCards(risk, anomalies, regimes);
-  renderChart(obs, anomalies, regimes);
+    let anomUrl = `/cities/${cityId}/anomalies?metric=${metric}&start=${start}&end=${end}&method=${method}`;
+    if (method === "zscore" || method === "rolling_zscore") anomUrl += `&threshold=${threshold}`;
+    if (method === "rolling_zscore") anomUrl += `&window=${window}`;
+    if (method === "iqr") anomUrl += `&k=${k}`;
+    const anomalies = await fetchJSON(anomUrl);
+
+    const regimes = await fetchJSON(
+      `/cities/${cityId}/regimes?metric=${metric}&start=${start}&end=${end}&window=${window}`
+    );
+
+    const risk = await fetchJSON(
+      `/cities/${cityId}/risk-score?start=${start}&end=${end}`
+    );
+
+    const summary = await fetchJSON(
+      `/cities/${cityId}/summary?start=${start}&end=${end}`
+    );
+
+    let compare = null;
+    if (compareCityId && compareCityId !== cityId) {
+      compare = await fetchJSON(
+        `/cities/compare?city1=${cityId}&city2=${compareCityId}&start=${start}&end=${end}`
+      );
+    }
+
+    setSummaryCards(risk, anomalies, regimes, summary, metric);
+    const chartInfo = renderChart(trend, anomalies, regimes, metric, aggregationMode);
+    renderCompare(compare);
+    setRangeInfo(start, end, chartInfo.plottedPoints, chartInfo.effectiveMode);
+
+    const plottedStart = chartInfo.plottedPoints[0]?.date;
+    const plottedEnd = chartInfo.plottedPoints[chartInfo.plottedPoints.length - 1]?.date;
+
+    if (plottedStart !== start || plottedEnd !== end) {
+      if (plottedStart && plottedEnd && plottedStart > start && plottedEnd < end) {
+        showStatus(`Data for this city only exists from ${plottedStart} to ${plottedEnd}.`, "warn");
+      } else if (plottedEnd && plottedEnd < end) {
+        showStatus(`No data exists after ${plottedEnd} for this city.`, "warn");
+      } else if (plottedStart && plottedStart > start) {
+        showStatus(`No data exists before ${plottedStart} for this city.`, "warn");
+      } else {
+        clearStatus();
+      }
+    } else {
+      clearStatus();
+    }
+  } catch (e) {
+    console.error(e);
+    showStatus(`Error: ${e.message}`, "error");
+  } finally {
+    runBtn.textContent = "Run";
+    runBtn.disabled = false;
+  }
 }
 
-(async function init(){
-  qs("startInput").value = daysAgoISO(30);
-  qs("endInput").value = todayISO();
+(async function init() {
+  qs("startInput").value = "2024-05-16";
+  qs("endInput").value = "2025-05-21";
 
   qs("methodSelect").addEventListener("change", updateMethodUI);
-  qs("runBtn").addEventListener("click", () => run().catch(e => alert(e.message)));
+  qs("runBtn").addEventListener("click", run);
   updateMethodUI();
 
-  await loadCities();
-  await run().catch(e => alert(e.message));
+  try {
+    await loadCities();
+    await run();
+  } catch (e) {
+    console.error(e);
+    showStatus(`Error during startup: ${e.message}`, "error");
+  }
 })();
 </script>
 </body>

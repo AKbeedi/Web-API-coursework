@@ -7,3 +7,4 @@ httpx
 ruff
 alembic
 pandas
+python-dateutil

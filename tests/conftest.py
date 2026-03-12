@@ -1,17 +1,31 @@
 # tests/conftest.py
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.main as main_mod
-from app.database import Base
+# -------------------------------------------------------------------
+# Ensure static assets exist BEFORE importing app.main
+# -------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+APP_DIR = PROJECT_ROOT / "app"
+STATIC_DIR = APP_DIR / "static"
+DASHBOARD_FILE = STATIC_DIR / "dashboard.html"
+
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+if not DASHBOARD_FILE.exists():
+    DASHBOARD_FILE.write_text("<!doctype html><title>Test Dashboard</title>", encoding="utf-8")
+
+import app.main as main_mod  # noqa: E402
+from app.database import Base  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def test_engine():
-    # In-memory SQLite that persists for the test session
+    # In-memory SQLite that persists for the whole test session
     engine = create_engine(
         "sqlite+pysqlite://",
         connect_args={"check_same_thread": False},
@@ -27,7 +41,7 @@ def TestingSessionLocal(test_engine):
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db(test_engine):
-    # IMPORTANT: make the app use the test engine for startup table creation too
+    # Make app startup use the test engine too
     main_mod.engine = test_engine
     Base.metadata.create_all(bind=test_engine)
     yield
@@ -35,7 +49,12 @@ def setup_test_db(test_engine):
 
 
 @pytest.fixture()
-def db_session(TestingSessionLocal):
+def db_session(TestingSessionLocal, test_engine):
+    # Start each test with clean tables
+    with test_engine.begin() as conn:
+        conn.execute(text("DELETE FROM observations"))
+        conn.execute(text("DELETE FROM cities"))
+
     session = TestingSessionLocal()
     try:
         yield session
@@ -45,12 +64,8 @@ def db_session(TestingSessionLocal):
 
 @pytest.fixture()
 def client(db_session):
-    # Override the app dependency to use the test session
     def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
+        yield db_session
 
     main_mod.app.dependency_overrides[main_mod.get_db] = override_get_db
 

@@ -1,14 +1,14 @@
 # Climate & Urban Environment Statistics API
 
-A FastAPI-based backend system for storing and analysing historical urban climate data.
+A **FastAPI-based backend system** for storing and analysing historical urban climate data.
 
-The API stores environmental observations (temperature and PM2.5) for cities and provides statistical analysis endpoints including trends, anomaly detection, environmental risk scoring, and city comparisons.
+The API stores environmental observations (temperature and PM2.5) for cities and provides statistical analysis endpoints including **trend analysis, anomaly detection, environmental risk scoring, regime classification, and city comparisons**.
 
-This project was developed as part of a university coursework assignment on API development and data analysis.
+This project was developed as part of a university coursework assignment on **API development and statistical data analysis**.
 
 ---
 
-## Features
+# Features
 
 - CRUD operations for city records
 - Historical observation storage (temperature and PM2.5)
@@ -18,26 +18,32 @@ This project was developed as part of a university coursework assignment on API 
 - Environmental risk scoring
 - Environmental regime classification
 - City comparison analytics
+- City environmental rankings
 - Interactive frontend dashboard
-- Automated smoke testing script
+- Automated testing with pytest
+- Smoke testing script for API validation
 
 ---
 
-## Live API
+# Live API
 
 Deployed API:
 
-https://YOUR-API.onrender.com
+```
+https://web-api-coursework.onrender.com
+```
 
 Interactive API documentation:
 
-https://YOUR-API.onrender.com/docs
+```
+https://web-api-coursework.onrender.com
+```
 
 ---
 
-## Setup
+# Setup
 
-### 1. Create a virtual environment
+## 1. Create a virtual environment
 
 ```bash
 python -m venv .venv
@@ -45,13 +51,13 @@ python -m venv .venv
 
 Activate it.
 
-Windows:
+**Windows**
 
 ```bash
 .venv\Scripts\activate
 ```
 
-Mac/Linux:
+**Mac/Linux**
 
 ```bash
 source .venv/bin/activate
@@ -59,7 +65,7 @@ source .venv/bin/activate
 
 ---
 
-### 2. Install dependencies
+## 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -67,13 +73,15 @@ pip install -r requirements.txt
 
 ---
 
-## Running the API
+# Running the API
+
+Start the FastAPI server:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Visit:
+Open the API documentation:
 
 ```
 http://127.0.0.1:8000/docs
@@ -81,31 +89,34 @@ http://127.0.0.1:8000/docs
 
 ---
 
-## Dataset
+# Dataset
 
-The API uses historical environmental observations containing temperature and PM2.5 measurements for multiple cities.
+The API uses historical environmental observations containing **temperature and PM2.5 measurements for multiple cities**.
 
 Observation data was imported into the database during development using a custom Python import script.
 
+https://www.kaggle.com/datasets/nelgiriyewithana/global-weather-repository
 ---
 
-## Example Endpoints
+# Example Endpoints
 
-### Cities
+## Cities
 
 ```
 GET /cities
 GET /cities/{city_id}
 POST /cities
+PUT /cities/{city_id}
+DELETE /cities/{city_id}
 ```
 
-### Observations
+## Observations
 
 ```
 GET /observations?city_id={id}
 ```
 
-### Analytics
+## Analytics
 
 ```
 GET /cities/{id}/summary
@@ -113,33 +124,54 @@ GET /cities/{id}/trend
 GET /cities/{id}/anomalies
 GET /cities/{id}/risk-score
 GET /cities/{id}/regimes
+GET /cities/{id}/insights
 GET /cities/compare
+GET /cities/rankings
 ```
 
 ---
 
-## Dashboard
+# Dashboard
 
-The project includes a simple frontend dashboard that visualises API results.
+The project includes a simple **frontend dashboard** that visualises API results.
 
-Open:
+Open in a browser:
 
 ```
-dashboard.html
+http://127.0.0.1:8000/dashboard
 ```
 
 The dashboard allows users to:
 
 - visualise climate trends
-- highlight anomalies
+- highlight statistical anomalies
 - view environmental risk scores
 - compare cities
 
 ---
 
-## Testing
+# Testing
 
-A smoke testing script is included to validate API endpoints.
+The project includes **automated API tests using pytest**.
+
+Run all tests with:
+
+```bash
+pytest
+```
+
+The test suite covers:
+
+- city CRUD operations
+- summary statistics
+- anomaly detection
+- trend analysis
+- environmental risk scoring
+- regime classification
+- city comparison
+- rankings
+
+A smoke testing script is also included to validate the deployed API.
 
 Run:
 
@@ -149,19 +181,26 @@ python scripts/smoke_test_api.py
 
 ---
 
-## API Documentation
+# API Documentation
 
-Full API documentation is available via the FastAPI interactive documentation:
+Full API documentation is available via the **FastAPI interactive documentation interface**:
 
 ```
 /docs
 ```
 
-This documentation includes request parameters, response schemas, and example responses.
+This documentation includes:
+
+- endpoint descriptions
+- request parameters
+- response schemas
+- example responses
+
+A full exported API documentation PDF is also included with the coursework submission.
 
 ---
 
-## Project Structure
+# Project Structure
 
 ```
 app/
@@ -174,9 +213,35 @@ scripts/
     import_observations_csv.py
     smoke_test_api.py
 
+tests/
+    conftest.py
+    test_city_crud.py
+    test_summary.py
+    test_anomalies.py
+    test_analytics_extra.py
+
 data/
 
-dashboard.html
+app/static/
+    dashboard.html
+
 requirements.txt
 README.md
 ```
+
+---
+
+# Technologies Used
+
+- **FastAPI** – API framework  
+- **SQLAlchemy** – ORM and database models  
+- **SQLite / SQL database** – data storage  
+- **Pydantic** – request/response validation  
+- **pytest** – automated testing  
+- **Uvicorn** – ASGI server  
+
+---
+
+# Licence
+
+This project was developed for **educational purposes as part of university coursework**.

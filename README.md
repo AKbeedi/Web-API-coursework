@@ -1,5 +1,5 @@
 # Climate & Urban Environment Statistics API
-
+API Documentation : https://github.com/AKbeedi/Web-API-coursework/blob/ec933a4c84d220a63d96e21888d5d6d5a4d95fc1/api%20documentation.pdf
 A **FastAPI-based backend system** for storing and analysing historical urban climate data.
 
 The API stores environmental observations (temperature and PM2.5) for cities and provides statistical analysis endpoints including **trend analysis, anomaly detection, environmental risk scoring, regime classification, and city comparisons**.

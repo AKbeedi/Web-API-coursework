@@ -253,11 +253,16 @@
         <div class="muted">Summary</div>
         <div id="summaryMeta" class="muted">—</div>
       </div>
+
+      <div class="card">
+        <div class="muted">City Insight</div>
+        <div id="insightText" class="muted" style="line-height:1.5;">—</div>
+      </div>
     </div>
   </div>
 
   <div class="card compare-box">
-    <div class="muted">Comparison insight</div>
+    <div class="muted">Comparison summary</div>
     <div id="compareText" class="compare-text">—</div>
   </div>
 
@@ -380,6 +385,10 @@ function setSummaryCards(risk, anomalies, regimes, summary, metric) {
   } else {
     qs("summaryMeta").textContent = "—";
   }
+}
+
+function renderInsight(insight) {
+  qs("insightText").textContent = insight?.insight ?? "—";
 }
 
 function formatDateLabel(dateStr, mode) {
@@ -696,6 +705,10 @@ async function run() {
       `/cities/${cityId}/summary?start=${start}&end=${end}`
     );
 
+    const insight = await fetchJSON(
+      `/cities/${cityId}/insights?start=${start}&end=${end}`
+    );
+
     let compare = null;
     if (compareCityId && compareCityId !== cityId) {
       compare = await fetchJSON(
@@ -704,6 +717,7 @@ async function run() {
     }
 
     setSummaryCards(risk, anomalies, regimes, summary, metric);
+    renderInsight(insight);
     const chartInfo = renderChart(trend, anomalies, regimes, metric, aggregationMode);
     renderCompare(compare);
     setRangeInfo(start, end, chartInfo.plottedPoints, chartInfo.effectiveMode);

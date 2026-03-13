@@ -180,10 +180,11 @@ The dashboard allows users to:
 
 The project includes **automated API tests using pytest**.
 
-Run all tests with:
+Run all tests with: (FROM THE ROOT FOLDER)
 
 ```bash
 pytest
+python -m pytest
 ```
 
 The test suite covers:

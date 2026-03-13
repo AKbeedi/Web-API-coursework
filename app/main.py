@@ -15,6 +15,13 @@ from sqlalchemy import func
 from .database import Base, engine, get_db
 from . import models, schemas
 
+from pydantic import BaseModel
+
+class ObservationCreateIn(BaseModel):
+    city_id: int
+    date: date
+    temp_c: float | None = None
+    pm25: float | None = None
 
 def _mean_std(values: list[float]) -> tuple[float, float]:
     n = len(values)
@@ -446,8 +453,46 @@ def query_observations(
 
     q = q.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
     return q.offset(offset).limit(limit).all()
+# -------------------- Observations (create) --------------------
+@app.post(
+    "/observations",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Observations"],
+    summary="Create an observation",
+    description="Creates a new environmental observation for a city on a specific date."
+)
+def create_observation(payload: ObservationCreateIn, db: Session = Depends(get_db)):
+    # make sure city exists
+    get_city_or_404(db, payload.city_id)
 
+    obs = models.Observation(
+        city_id=payload.city_id,
+        obs_date=payload.date,
+        temp_c=payload.temp_c,
+        pm25=payload.pm25,
+    )
 
+    db.add(obs)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ProblemException(
+            status=409,
+            title="Duplicate observation",
+            detail="An observation already exists for this city on that date.",
+            type_="https://example.com/problems/duplicate-observation",
+        )
+
+    db.refresh(obs)
+
+    return {
+        "id": obs.id,
+        "city_id": obs.city_id,
+        "date": obs.obs_date,
+        "temp_c": obs.temp_c,
+        "pm25": obs.pm25,
+    }
 # -------------------- Analytics --------------------
 @app.get(
     "/cities/{city_id}/summary",

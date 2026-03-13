@@ -1,4 +1,5 @@
-API Documentation : https://github.com/AKbeedi/Web-API-coursework/blob/ec933a4c84d220a63d96e21888d5d6d5a4d95fc1/api%20documentation.pdf
+API Documentation : api documentation.pdf
+https://github.com/AKbeedi/Web-API-coursework/blob/8acc0c29786746635fc098d82f96bf8227bbb267/api%20documentation.pdf
 
 /dashboard for dashboard
 /docs for swagger api documentation

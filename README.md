@@ -1,5 +1,8 @@
 API Documentation : https://github.com/AKbeedi/Web-API-coursework/blob/ec933a4c84d220a63d96e21888d5d6d5a4d95fc1/api%20documentation.pdf
 
+/dashboard for dashboard
+/docs for swagger api documentation
+
 # Climate & Urban Environment Statistics API
 
 A **FastAPI-based backend system** for storing and analysing historical urban climate data.
@@ -102,7 +105,7 @@ https://www.kaggle.com/datasets/nelgiriyewithana/global-weather-repository
 
 ## Importing the Dataset
 
-Before running the analytics endpoints, the dataset must be imported into the database.
+In case app.db isnt already present and populated, the dataset must be imported into the database. 
 
 Run the import script from the **project root directory**:
 

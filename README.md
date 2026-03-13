@@ -75,8 +75,7 @@ pip install -r requirements.txt
 
 ---
 
-# Running the API
-
+# Running the API (All commands below should be run from the project root directory.)
 Start the FastAPI server: (2 ways) FROM the root folder
 
 ```bash
@@ -176,7 +175,7 @@ The dashboard allows users to:
 
 ---
 
-# Testing
+# Testing (All test commands should also be run from the project root directory.)
 
 The project includes **automated API tests using pytest**.
 
@@ -210,7 +209,8 @@ python scripts/smoke_test_api.py
 
 # API Documentation
 
-Full API documentation is available via the **FastAPI interactive documentation interface**:
+A PDF version of the API documentation is included in this repository.
+Full API documentation is available via the **FastAPI interactive documentation interface**: https://web-api-coursework.onrender.com/docs
 
 ```
 /docs
@@ -223,7 +223,7 @@ This documentation includes:
 - response schemas
 - example responses
 
-A full exported API documentation PDF is also included with the coursework submission.
+
 
 ---
 

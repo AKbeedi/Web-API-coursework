@@ -38,7 +38,7 @@ https://web-api-coursework.onrender.com
 Interactive API documentation:
 
 ```
-https://web-api-coursework.onrender.com
+https://web-api-coursework.onrender.com/docs
 ```
 
 ---
@@ -77,10 +77,11 @@ pip install -r requirements.txt
 
 # Running the API
 
-Start the FastAPI server:
+Start the FastAPI server: (2 ways) FROM the root folder
 
 ```bash
 uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
 Open the API documentation:
@@ -98,6 +99,29 @@ The API uses historical environmental observations containing **temperature and 
 Observation data was imported into the database during development using a custom Python import script.
 
 https://www.kaggle.com/datasets/nelgiriyewithana/global-weather-repository
+
+
+## Importing the Dataset
+
+Before running the analytics endpoints, the dataset must be imported into the database.
+
+Run the import script from the **project root directory**:
+
+```bash
+python scripts/import_observations_csv.py data/clean_weather.csv
+```
+
+This script will:
+
+- create city records if they do not already exist
+- insert environmental observations for each city
+- skip duplicate observations automatically
+
+Once the dataset has been imported, the API endpoints and dashboard will return populated results.
+
+
+
+
 ---
 
 # Example Endpoints

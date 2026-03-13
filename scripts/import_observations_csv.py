@@ -3,7 +3,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.append(".")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
 
 from app.database import SessionLocal, engine, Base
 from app import models
